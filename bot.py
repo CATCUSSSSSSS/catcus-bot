@@ -28,7 +28,9 @@ from texts import WELCOME_TEXT
 
 bot = Bot(
     token=BOT_TOKEN,
-    parse_mode=ParseMode.HTML
+    default=DefaultBotProperties(
+        parse_mode=ParseMode.HTML
+    )
 )
 
 dp = Dispatcher()
