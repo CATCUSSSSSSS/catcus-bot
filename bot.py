@@ -286,7 +286,7 @@ async def admin_command(message: types.Message):
     await message.answer(
         "⚙️ Admin Panel",
         reply_markup=admin_panel()
-    )
+    )    
 
 
 @dp.callback_query(lambda c: c.data == "stats")
