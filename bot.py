@@ -21,7 +21,7 @@ from database import (
     get_users_count
 )
 
-from texts import WELCOME_TEXT, ABOUT_TEXT
+from texts import WELCOME_TEXT
 
 
 bot = Bot(
@@ -68,16 +68,6 @@ def admin_panel():
                     text="🚫 Ban List",
                     callback_data="ban_list"
                 )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="✏️ Welcome Message",
-                    callback_data="welcome"
-                ),
-                InlineKeyboardButton(
-                    text="ℹ️ About Message",
-                    callback_data="about"
-                )
             ]
         ]
     )
@@ -100,7 +90,9 @@ async def start(message: types.Message):
         WELCOME_TEXT,
         reply_markup=user_keyboard(mode)
     )
-    @dp.message(lambda m: m.text in [
+
+
+@dp.message(lambda message: message.text in [
     "🔄 Switch to Public",
     "🔄 Switch to Anonymous"
 ])
@@ -110,11 +102,10 @@ async def switch_mode(message: types.Message):
         message.from_user.id
     )
 
-    new_mode = (
-        "public"
-        if current == "anonymous"
-        else "anonymous"
-    )
+    if current == "anonymous":
+        new_mode = "public"
+    else:
+        new_mode = "anonymous"
 
     await change_mode(
         message.from_user.id,
@@ -122,7 +113,7 @@ async def switch_mode(message: types.Message):
     )
 
     await message.answer(
-        f"Mode: {'👤 Public' if new_mode == 'public' else '🎭 Anonymous'}",
+        f"Mode changed to {'👤 Public' if new_mode == 'public' else '🎭 Anonymous'}",
         reply_markup=user_keyboard(new_mode)
     )
 
@@ -158,47 +149,23 @@ async def receive_message(message: types.Message):
             f"Username: @{message.from_user.username}"
         )
 
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="💬 Reply",
-                    callback_data=f"reply:{user_id}"
-                ),
-                InlineKeyboardButton(
-                    text="🚫 Ban",
-                    callback_data=f"ban:{user_id}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🗑 Delete",
-                    callback_data="delete"
-                )
-            ]
-        ]
-    )
-
-
-    sent = await bot.send_message(
+    await bot.send_message(
         ADMIN_ID,
-        f"📩 New Message\n\n{info}",
-        reply_markup=keyboard
+        f"📩 New Message\n\n{info}"
     )
 
-
-    await message.copy_to(
+    sent = await message.copy_to(
         ADMIN_ID
     )
-
 
     await save_message(
         user_id,
         sent.message_id,
         mode
     )
-    @dp.message(Command("admin"))
+
+
+@dp.message(Command("admin"))
 async def admin_command(message: types.Message):
 
     if message.from_user.id != ADMIN_ID:
@@ -219,8 +186,20 @@ async def stats(callback: types.CallbackQuery):
     count = await get_users_count()
 
     await callback.message.answer(
-        f"📊 Statistics\n\n"
-        f"👥 Users: {count}"
+        f"📊 Users: {count}"
+    )
+
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "broadcast")
+async def broadcast(callback: types.CallbackQuery):
+
+    if callback.from_user.id != ADMIN_ID:
+        return
+
+    await callback.message.answer(
+        "📢 Broadcast system will be added next."
     )
 
     await callback.answer()
@@ -241,19 +220,6 @@ async def users(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data == "broadcast")
-async def broadcast_start(callback: types.CallbackQuery):
-
-    if callback.from_user.id != ADMIN_ID:
-        return
-
-    await callback.message.answer(
-        "📢 Send the message you want to broadcast."
-    )
-
-    await callback.answer()
-
-
 @dp.callback_query(lambda c: c.data == "ban_list")
 async def ban_list(callback: types.CallbackQuery):
 
@@ -261,7 +227,7 @@ async def ban_list(callback: types.CallbackQuery):
         return
 
     await callback.message.answer(
-        "🚫 Ban list is currently empty."
+        "🚫 No banned users."
     )
 
     await callback.answer()
