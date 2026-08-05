@@ -277,16 +277,16 @@ async def delete_button(callback: types.CallbackQuery):
 @dp.message(Command("admin"))
 async def admin_command(message: types.Message):
 
-    print("ADMIN TEST:", message.from_user.id, ADMIN_ID)
+    print("ADMIN COMMAND FROM:", message.from_user.id)
+    print("SAVED ADMIN ID:", ADMIN_ID)
 
     if message.from_user.id != ADMIN_ID:
-        await message.answer("Not admin")
         return
 
     await message.answer(
         "⚙️ Admin Panel",
         reply_markup=admin_panel()
-    )    
+    )  
 
 
 @dp.callback_query(lambda c: c.data == "stats")
