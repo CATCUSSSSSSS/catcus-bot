@@ -276,7 +276,8 @@ async def delete_button(callback: types.CallbackQuery):
     await callback.answer()
 @dp.message(Command("admin"))
 async def admin_command(message: types.Message):
-
+    
+print("ADMIN COMMAND RECEIVED", message.from_user.id)
     print("ADMIN COMMAND FROM:", message.from_user.id)
     print("SAVED ADMIN ID:", ADMIN_ID)
 
