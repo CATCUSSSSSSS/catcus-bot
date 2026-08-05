@@ -11,6 +11,7 @@ from aiogram.types import (
 )
 
 from config import BOT_TOKEN, ADMIN_ID
+
 from database import (
     init_db,
     add_user,
@@ -38,14 +39,14 @@ reply_targets = {}
 def user_keyboard(mode):
 
     if mode == "anonymous":
-        button = "🔄 Switch to Public"
+        text = "🔄 Switch to Public"
     else:
-        button = "🔄 Switch to Anonymous"
+        text = "🔄 Switch to Anonymous"
 
     return ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text=button)
+                KeyboardButton(text=text)
             ]
         ],
         resize_keyboard=True
@@ -74,12 +75,6 @@ def admin_panel():
                 InlineKeyboardButton(
                     text="🚫 Ban List",
                     callback_data="ban_list"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="❌ Close",
-                    callback_data="close"
                 )
             ]
         ]
@@ -139,11 +134,10 @@ async def switch_mode(message: types.Message):
         message.from_user.id
     )
 
-    new_mode = (
-        "public"
-        if current == "anonymous"
-        else "anonymous"
-    )
+    if current == "anonymous":
+        new_mode = "public"
+    else:
+        new_mode = "anonymous"
 
     await change_mode(
         message.from_user.id,
@@ -189,7 +183,7 @@ async def receive_message(message: types.Message):
         )
 
 
-    admin_message = await bot.send_message(
+    sent = await bot.send_message(
         ADMIN_ID,
         f"📩 New Message\n\n{info}",
         reply_markup=message_actions(user_id)
@@ -203,7 +197,7 @@ async def receive_message(message: types.Message):
 
     await save_message(
         user_id,
-        admin_message.message_id,
+        sent.message_id,
         mode
     )
 
@@ -235,23 +229,14 @@ async def admin_reply(message: types.Message):
 
     user_id = reply_targets[ADMIN_ID]
 
-    try:
+    await bot.send_message(
+        user_id,
+        "📨 Reply:\n\n" + message.text
+    )
 
-        await bot.send_message(
-            user_id,
-            "📨 Reply:\n\n" + message.text
-        )
-
-        await message.answer(
-            "✅ Sent."
-        )
-
-    except:
-
-        await message.answer(
-            "❌ Failed to send."
-        )
-
+    await message.answer(
+        "✅ Sent."
+    )
 
     del reply_targets[ADMIN_ID]
 
@@ -322,7 +307,7 @@ async def users_button(callback: types.CallbackQuery):
     count = await get_users_count()
 
     await callback.message.answer(
-        f"👥 Total users: {count}"
+        f"👥 Total Users: {count}"
     )
 
     await callback.answer()
@@ -335,7 +320,7 @@ async def broadcast_button(callback: types.CallbackQuery):
         return
 
     await callback.message.answer(
-        "📢 Broadcast mode is ready for upgrade."
+        "📢 Broadcast feature will be added."
     )
 
     await callback.answer()
@@ -348,19 +333,8 @@ async def ban_list_button(callback: types.CallbackQuery):
         return
 
     await callback.message.answer(
-        "🚫 Ban management ready."
+        "🚫 Ban list feature will be added."
     )
-
-    await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data == "close")
-async def close_button(callback: types.CallbackQuery):
-
-    if callback.from_user.id != ADMIN_ID:
-        return
-
-    await callback.message.delete()
 
     await callback.answer()
 
