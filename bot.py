@@ -271,7 +271,7 @@ async def delete_button(callback: types.CallbackQuery):
     await callback.message.delete()
 
     await callback.answer()
-    @dp.message(Command("admin"))
+@dp.message(Command("admin"))
 async def admin_command(message: types.Message):
 
     if message.from_user.id != ADMIN_ID:
