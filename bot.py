@@ -224,7 +224,7 @@ async def reply_button(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@dp.message(lambda m: m.from_user.id == ADMIN_ID)
+@dp.message(lambda m: m.from_user.id == ADMIN_ID and not m.text.startswith("/"))
 async def admin_reply(message: types.Message):
 
     if ADMIN_ID not in reply_targets:
