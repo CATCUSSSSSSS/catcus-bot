@@ -148,7 +148,7 @@ async def switch_mode(message: types.Message):
         "Mode changed.",
         reply_markup=user_keyboard(new_mode)
     )
-    @dp.message()
+@dp.message()
 async def receive_message(message: types.Message):
 
     user_id = message.from_user.id
