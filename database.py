@@ -5,43 +5,43 @@ DB_NAME = "catcus_bot.db"
 
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
-
         await db.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            full_name TEXT,
-            mode TEXT DEFAULT 'anonymous',
-            banned INTEGER DEFAULT 0
-        )
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                full_name TEXT,
+                mode TEXT DEFAULT 'anonymous',
+                banned INTEGER DEFAULT 0
+            )
         """)
-
         await db.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            message_id INTEGER,
-            mode TEXT
-        )
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                message_id INTEGER,
+                mode TEXT
+            )
         """)
-
         await db.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
         """)
-
         await db.commit()
 
 
 async def add_user(user_id, username, full_name):
+    # Upsert instead of INSERT OR IGNORE: keeps username/full_name current
+    # for returning users instead of freezing them at their first message.
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
             """
-            INSERT OR IGNORE INTO users
-            (user_id, username, full_name)
+            INSERT INTO users (user_id, username, full_name)
             VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username = excluded.username,
+                full_name = excluded.full_name
             """,
             (user_id, username, full_name)
         )
@@ -55,7 +55,6 @@ async def get_user_mode(user_id):
             (user_id,)
         )
         result = await cursor.fetchone()
-
         return result[0] if result else "anonymous"
 
 
@@ -72,8 +71,7 @@ async def save_message(user_id, message_id, mode):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
             """
-            INSERT INTO messages
-            (user_id, message_id, mode)
+            INSERT INTO messages (user_id, message_id, mode)
             VALUES (?, ?, ?)
             """,
             (user_id, message_id, mode)
@@ -105,18 +103,13 @@ async def is_banned(user_id):
             "SELECT banned FROM users WHERE user_id=?",
             (user_id,)
         )
-
         result = await cursor.fetchone()
-
         return bool(result and result[0] == 1)
 
 
 async def get_users_count():
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute(
-            "SELECT COUNT(*) FROM users"
-        )
-
+        cursor = await db.execute("SELECT COUNT(*) FROM users")
         result = await cursor.fetchone()
-
         return result[0]
+        
