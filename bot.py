@@ -42,18 +42,13 @@ def user_keyboard(mode):
     )
 
 
-def admin_panel():
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="📢 Broadcast", callback_data="broadcast"),
-                InlineKeyboardButton(text="👥 Users", callback_data="users"),
-            ],
-            [
-                InlineKeyboardButton(text="📊 Statistics", callback_data="stats"),
-                InlineKeyboardButton(text="🚫 Ban List", callback_data="ban_list"),
-            ],
-        ]
+def admin_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📢 Broadcast"), KeyboardButton(text="👥 Users")],
+            [KeyboardButton(text="📊 Statistics"), KeyboardButton(text="🚫 Ban List")],
+        ],
+        resize_keyboard=True,
     )
 
 
@@ -71,6 +66,10 @@ def message_actions(user_id):
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        await message.answer("⚙️ Admin Panel", reply_markup=admin_keyboard())
+        return
+
     await add_user(
         message.from_user.id,
         message.from_user.username,
@@ -86,6 +85,33 @@ async def switch_mode(message: types.Message):
     new_mode = "public" if current == "anonymous" else "anonymous"
     await change_mode(message.from_user.id, new_mode)
     await message.answer("Mode changed.", reply_markup=user_keyboard(new_mode))
+
+
+# --- Admin's persistent keyboard buttons ---
+# Registered before admin_reply() on purpose: admin_reply's filter matches
+# any non-command text from the admin, so if it came first it would swallow
+# these button taps as if they were reply messages.
+
+@dp.message(lambda m: m.from_user.id == ADMIN_ID and m.text == "📊 Statistics")
+async def admin_stats(message: types.Message):
+    count = await get_users_count()
+    await message.answer(f"📊 Statistics\n\n👥 Users: {count}")
+
+
+@dp.message(lambda m: m.from_user.id == ADMIN_ID and m.text == "👥 Users")
+async def admin_users(message: types.Message):
+    count = await get_users_count()
+    await message.answer(f"👥 Total Users: {count}")
+
+
+@dp.message(lambda m: m.from_user.id == ADMIN_ID and m.text == "📢 Broadcast")
+async def admin_broadcast(message: types.Message):
+    await message.answer("📢 Broadcast feature will be added.")
+
+
+@dp.message(lambda m: m.from_user.id == ADMIN_ID and m.text == "🚫 Ban List")
+async def admin_ban_list(message: types.Message):
+    await message.answer("🚫 Ban list feature will be added.")
 
 
 # This filter must exclude the admin. aiogram tries handlers in registration
@@ -121,12 +147,37 @@ async def receive_message(message: types.Message):
             f"Username: {username}"
         )
 
-    sent = await bot.send_message(
-        ADMIN_ID,
-        f"📩 New Message\n\n{info}",
-        reply_markup=message_actions(user_id),
-    )
-    await message.copy_to(ADMIN_ID)
+    header = f"📩 New Message\n\n{info}"
+
+    if message.text:
+        # Plain text: header + the message itself, as a single message.
+        sent = await bot.send_message(
+            ADMIN_ID,
+            f"{header}\n\n{message.text}",
+            reply_markup=message_actions(user_id),
+        )
+    else:
+        # Media (photo, voice, document...): put the header in the caption so
+        # it still arrives as one message. Some types (stickers, locations,
+        # polls) don't support captions at all, and very long captions can be
+        # rejected too — fall back to two messages only if that happens.
+        caption = header
+        if message.caption:
+            caption += f"\n\n{message.caption}"
+        try:
+            sent = await message.copy_to(
+                ADMIN_ID,
+                caption=caption,
+                reply_markup=message_actions(user_id),
+            )
+        except TelegramAPIError:
+            sent = await bot.send_message(
+                ADMIN_ID,
+                header,
+                reply_markup=message_actions(user_id),
+            )
+            await message.copy_to(ADMIN_ID)
+
     await save_message(user_id, sent.message_id, mode)
 
 
@@ -184,41 +235,7 @@ async def delete_button(callback: types.CallbackQuery):
 async def admin_command(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
-    await message.answer("⚙️ Admin Panel", reply_markup=admin_panel())
-
-
-@dp.callback_query(lambda c: c.data == "stats")
-async def stats_button(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        return
-    count = await get_users_count()
-    await callback.message.answer(f"📊 Statistics\n\n👥 Users: {count}")
-    await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data == "users")
-async def users_button(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        return
-    count = await get_users_count()
-    await callback.message.answer(f"👥 Total Users: {count}")
-    await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data == "broadcast")
-async def broadcast_button(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        return
-    await callback.message.answer("📢 Broadcast feature will be added.")
-    await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data == "ban_list")
-async def ban_list_button(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        return
-    await callback.message.answer("🚫 Ban list feature will be added.")
-    await callback.answer()
+    await message.answer("⚙️ Admin Panel", reply_markup=admin_keyboard())
 
 
 async def main():
@@ -229,4 +246,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+                               
