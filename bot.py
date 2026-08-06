@@ -3,161 +3,98 @@ import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
-    ReplyKeyboardMarkup
+    ReplyKeyboardMarkup,
 )
 
 from config import BOT_TOKEN, ADMIN_ID
-
 from database import (
     init_db,
     add_user,
     get_user_mode,
     change_mode,
     is_banned,
+    ban_user,
     save_message,
-    get_users_count
+    get_users_count,
 )
-
 from texts import WELCOME_TEXT
-
 
 bot = Bot(
     token=BOT_TOKEN,
-    default=DefaultBotProperties(
-        parse_mode=ParseMode.HTML
-    )
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
 )
-
 dp = Dispatcher()
-
 
 reply_targets = {}
 
 
 def user_keyboard(mode):
-
-    if mode == "anonymous":
-        text = "🔄 Switch to Public"
-    else:
-        text = "🔄 Switch to Anonymous"
-
+    text = "🔄 Switch to Public" if mode == "anonymous" else "🔄 Switch to Anonymous"
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text=text)
-            ]
-        ],
-        resize_keyboard=True
+        keyboard=[[KeyboardButton(text=text)]],
+        resize_keyboard=True,
     )
 
 
 def admin_panel():
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="📢 Broadcast",
-                    callback_data="broadcast"
-                ),
-                InlineKeyboardButton(
-                    text="👥 Users",
-                    callback_data="users"
-                )
+                InlineKeyboardButton(text="📢 Broadcast", callback_data="broadcast"),
+                InlineKeyboardButton(text="👥 Users", callback_data="users"),
             ],
             [
-                InlineKeyboardButton(
-                    text="📊 Statistics",
-                    callback_data="stats"
-                ),
-                InlineKeyboardButton(
-                    text="🚫 Ban List",
-                    callback_data="ban_list"
-                )
-            ]
+                InlineKeyboardButton(text="📊 Statistics", callback_data="stats"),
+                InlineKeyboardButton(text="🚫 Ban List", callback_data="ban_list"),
+            ],
         ]
     )
 
 
 def message_actions(user_id):
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="💬 Reply",
-                    callback_data=f"reply:{user_id}"
-                ),
-                InlineKeyboardButton(
-                    text="🚫 Ban",
-                    callback_data=f"ban:{user_id}"
-                )
+                InlineKeyboardButton(text="💬 Reply", callback_data=f"reply:{user_id}"),
+                InlineKeyboardButton(text="🚫 Ban", callback_data=f"ban:{user_id}"),
             ],
-            [
-                InlineKeyboardButton(
-                    text="🗑 Delete",
-                    callback_data="delete"
-                )
-            ]
+            [InlineKeyboardButton(text="🗑 Delete", callback_data="delete")],
         ]
     )
 
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
-
     await add_user(
         message.from_user.id,
         message.from_user.username,
-        message.from_user.full_name
+        message.from_user.full_name,
     )
-
-    mode = await get_user_mode(
-        message.from_user.id
-    )
-
-    await message.answer(
-        WELCOME_TEXT,
-        reply_markup=user_keyboard(mode)
-    )
+    mode = await get_user_mode(message.from_user.id)
+    await message.answer(WELCOME_TEXT, reply_markup=user_keyboard(mode))
 
 
-@dp.message(lambda m: m.text in [
-    "🔄 Switch to Public",
-    "🔄 Switch to Anonymous"
-])
+@dp.message(lambda m: m.text in ["🔄 Switch to Public", "🔄 Switch to Anonymous"])
 async def switch_mode(message: types.Message):
+    current = await get_user_mode(message.from_user.id)
+    new_mode = "public" if current == "anonymous" else "anonymous"
+    await change_mode(message.from_user.id, new_mode)
+    await message.answer("Mode changed.", reply_markup=user_keyboard(new_mode))
 
-    current = await get_user_mode(
-        message.from_user.id
-    )
 
-    if current == "anonymous":
-        new_mode = "public"
-    else:
-        new_mode = "anonymous"
-
-    await change_mode(
-        message.from_user.id,
-        new_mode
-    )
-
-    await message.answer(
-        "Mode changed.",
-        reply_markup=user_keyboard(new_mode)
-    )
-@dp.message()
+# This filter must exclude the admin. aiogram tries handlers in registration
+# order and stops at the first match, so without this exclusion this catch-all
+# handler grabs every admin message too (before admin_reply ever sees it),
+# which is what was silently breaking the reply feature.
+@dp.message(lambda m: m.from_user.id != ADMIN_ID)
 async def receive_message(message: types.Message):
-
     user_id = message.from_user.id
-
-    if user_id == ADMIN_ID:
-        return
 
     if await is_banned(user_id):
         return
@@ -165,196 +102,131 @@ async def receive_message(message: types.Message):
     await add_user(
         user_id,
         message.from_user.username,
-        message.from_user.full_name
+        message.from_user.full_name,
     )
 
     mode = await get_user_mode(user_id)
 
     if mode == "anonymous":
-
-        info = (
-            "🎭 Anonymous\n"
-            f"ID: {user_id}"
-        )
-
+        info = f"🎭 Anonymous\nID: {user_id}"
     else:
-
+        username = (
+            f"@{message.from_user.username}"
+            if message.from_user.username
+            else "no username"
+        )
         info = (
             "👤 Public\n"
             f"Name: {message.from_user.full_name}\n"
-            f"Username: @{message.from_user.username}"
+            f"Username: {username}"
         )
-
 
     sent = await bot.send_message(
         ADMIN_ID,
         f"📩 New Message\n\n{info}",
-        reply_markup=message_actions(user_id)
+        reply_markup=message_actions(user_id),
     )
-
-
-    await message.copy_to(
-        ADMIN_ID
-    )
-
-
-    await save_message(
-        user_id,
-        sent.message_id,
-        mode
-    )
+    await message.copy_to(ADMIN_ID)
+    await save_message(user_id, sent.message_id, mode)
 
 
 @dp.callback_query(lambda c: c.data.startswith("reply:"))
 async def reply_button(callback: types.CallbackQuery):
-
     if callback.from_user.id != ADMIN_ID:
         return
-
-    user_id = int(
-        callback.data.split(":")[1]
-    )
-
+    user_id = int(callback.data.split(":")[1])
     reply_targets[ADMIN_ID] = user_id
-
-    await callback.message.answer(
-        "💬 Send your reply now."
-    )
-
+    await callback.message.answer("💬 Send your reply now.")
     await callback.answer()
 
 
-@dp.message(lambda m: m.from_user.id == ADMIN_ID and not m.text.startswith("/"))
+# `m.text and` guards against non-text messages (photo, sticker, voice...)
+# from the admin — without it, m.text.startswith("/") crashes on None.
+@dp.message(
+    lambda m: m.from_user.id == ADMIN_ID and m.text and not m.text.startswith("/")
+)
 async def admin_reply(message: types.Message):
-
     if ADMIN_ID not in reply_targets:
         return
 
     user_id = reply_targets[ADMIN_ID]
 
-    await bot.send_message(
-        user_id,
-        "📨 Reply:\n\n" + message.text
-    )
-
-    await message.answer(
-        "✅ Sent."
-    )
+    try:
+        await bot.send_message(user_id, "📨 Reply:\n\n" + message.text)
+        await message.answer("✅ Sent.")
+    except TelegramAPIError:
+        await message.answer(
+            "⚠️ Couldn't deliver the reply — the user may have blocked the bot."
+        )
 
     del reply_targets[ADMIN_ID]
 
 
 @dp.callback_query(lambda c: c.data.startswith("ban:"))
 async def ban_button(callback: types.CallbackQuery):
-
     if callback.from_user.id != ADMIN_ID:
         return
-
-    user_id = int(
-        callback.data.split(":")[1]
-    )
-
-    from database import ban_user
-
+    user_id = int(callback.data.split(":")[1])
     await ban_user(user_id)
-
-    await callback.message.answer(
-        "🚫 User banned."
-    )
-
+    await callback.message.answer("🚫 User banned.")
     await callback.answer()
 
 
 @dp.callback_query(lambda c: c.data == "delete")
 async def delete_button(callback: types.CallbackQuery):
-
     if callback.from_user.id != ADMIN_ID:
         return
-
     await callback.message.delete()
-
     await callback.answer()
+
+
 @dp.message(Command("admin"))
 async def admin_command(message: types.Message):
-    
-    print("ADMIN COMMAND RECEIVED", message.from_user.id)
-    print("ADMIN COMMAND FROM:", message.from_user.id)
-    print("SAVED ADMIN ID:", ADMIN_ID)
-
     if message.from_user.id != ADMIN_ID:
         return
-
-    await message.answer(
-        "⚙️ Admin Panel",
-        reply_markup=admin_panel()
-    )  
+    await message.answer("⚙️ Admin Panel", reply_markup=admin_panel())
 
 
 @dp.callback_query(lambda c: c.data == "stats")
 async def stats_button(callback: types.CallbackQuery):
-
     if callback.from_user.id != ADMIN_ID:
         return
-
     count = await get_users_count()
-
-    await callback.message.answer(
-        f"📊 Statistics\n\n👥 Users: {count}"
-    )
-
+    await callback.message.answer(f"📊 Statistics\n\n👥 Users: {count}")
     await callback.answer()
 
 
 @dp.callback_query(lambda c: c.data == "users")
 async def users_button(callback: types.CallbackQuery):
-
     if callback.from_user.id != ADMIN_ID:
         return
-
     count = await get_users_count()
-
-    await callback.message.answer(
-        f"👥 Total Users: {count}"
-    )
-
+    await callback.message.answer(f"👥 Total Users: {count}")
     await callback.answer()
 
 
 @dp.callback_query(lambda c: c.data == "broadcast")
 async def broadcast_button(callback: types.CallbackQuery):
-
     if callback.from_user.id != ADMIN_ID:
         return
-
-    await callback.message.answer(
-        "📢 Broadcast feature will be added."
-    )
-
+    await callback.message.answer("📢 Broadcast feature will be added.")
     await callback.answer()
 
 
 @dp.callback_query(lambda c: c.data == "ban_list")
 async def ban_list_button(callback: types.CallbackQuery):
-
     if callback.from_user.id != ADMIN_ID:
         return
-
-    await callback.message.answer(
-        "🚫 Ban list feature will be added."
-    )
-
+    await callback.message.answer("🚫 Ban list feature will be added.")
     await callback.answer()
 
 
 async def main():
-
     await init_db()
-
     print("Catcus Bot Started")
-
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-
     asyncio.run(main())
+    
